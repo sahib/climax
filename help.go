@@ -13,9 +13,9 @@ Usage:
 	{{.Name}} {{if .Commands}}command [arguments]{{end}}
 
 {{if .Commands}}The commands are:
-	{{if .UngroupedCount}}{{range .Commands}}
+{{if .UngroupedCount}}{{range .Commands}}
 	{{if not .Group}}{{.Name | printf "%-11s"}} {{.Brief}}{{end}}{{end}}
-	{{end}}{{range .Groups}}{{if .Commands}}
+{{end}}{{range .Groups}}{{if .Commands}}
 {{.Name}}
 	{{range .Commands}}
 	{{.Name | printf "%-11s"}} {{.Brief}}{{end}}
@@ -35,7 +35,7 @@ const commandHelpTemplate string = `Usage: {{commandUsage .Command}}
 {{if .Flags}}
 Available options:
 {{range .Flags}}
-	{{flagUsage .}}
+	{{flagUsage . false}}
 		{{.Help | tabout}}{{end}}{{end}}
 {{if .Examples}}
 Examples:
@@ -79,13 +79,21 @@ func commandUsage(command Command) string {
 
 	usage := command.Name
 	for _, flag := range command.Flags {
-		usage += " [" + flagUsage(flag) + "]"
+		usage += " [" + flagUsage(flag, true) + "]"
 	}
 
 	return usage
 }
 
-func flagUsage(flag Flag) string {
+func flagUsage(flag Flag, tiny bool) string {
+	if tiny {
+		if flag.Short != "" {
+			return "-" + flag.Short
+		}
+
+		return "--" + flag.Name
+	}
+
 	var short string
 	if flag.Short != "" {
 		short = "-" + flag.Short + ", "

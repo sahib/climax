@@ -2,7 +2,13 @@ package climax
 
 import (
 	"fmt"
+	"io"
 	"os"
+)
+
+var (
+	outputDevice io.Writer = os.Stdout
+	errorDevice  io.Writer = os.Stderr
 )
 
 // Application is a main CLI instance.
@@ -19,6 +25,11 @@ type Application struct {
 	Topics   []Topic
 	Groups   []Group
 
+	// Default is a default handler. It gets executed if there are
+	// no command line arguments (except the program name), when
+	// otherwise, by default, the help entry is being shown.
+	Default CmdHandler
+
 	ungroupedCmdsCount int
 }
 
@@ -28,6 +39,20 @@ type Application struct {
 type Group struct {
 	Name     string
 	Commands []*Command
+}
+
+func (a *Application) println(stuff ...interface{}) {
+	fmt.Fprintln(outputDevice, stuff...)
+}
+
+func (a *Application) printf(format string, stuff ...interface{}) {
+	fmt.Fprintf(outputDevice, format, stuff...)
+}
+
+func (a *Application) printerr(err ...interface{}) {
+	for _, each := range err {
+		fmt.Fprintln(errorDevice, a.Name+":", each)
+	}
 }
 
 func (a *Application) commandByName(name string) *Command {
@@ -60,7 +85,7 @@ func (a *Application) groupByName(name string) *Group {
 	return nil
 }
 
-func (a Application) isNameAvailable(name string) bool {
+func (a *Application) isNameAvailable(name string) bool {
 	hypo, jypo := a.commandByName(name), a.topicByName(name)
 	if hypo != nil || jypo != nil {
 		return false
@@ -103,7 +128,7 @@ func (a *Application) AddTopic(topic Topic) {
 // Run executes a CLI.
 //
 // Take a note, Run panics if len(os.Args) < 1
-func (a Application) Run() int {
+func (a *Application) Run() int {
 	if len(os.Args) < 1 {
 		panic("shell-provided arguments are not present")
 	}
@@ -111,12 +136,16 @@ func (a Application) Run() int {
 	// $ program
 	//           ^ no args
 	if len(arguments) == 0 {
-		println(a.globalHelp())
-		return 0
+		if a.Default == nil {
+			a.println(a.globalHelp())
+			return 0
+		}
+
+		return a.Default(*newContext(a))
 	}
 
 	yankeeGoHome := func(errMsg string) {
-		printerr(fmt.Errorf("%s: %s", a.Name, errMsg))
+		a.printerr(errMsg)
 		os.Exit(1)
 	}
 
@@ -127,19 +156,19 @@ func (a Application) Run() int {
 		// $ program help
 		//           ^ one argument
 		if len(arguments) <= 1 {
-			println(a.globalHelp())
+			a.println(a.globalHelp())
 			return 0
 		}
 
 		command := a.commandByName(arguments[1])
 		if command != nil {
-			println(a.commandHelp(command))
+			a.println(a.commandHelp(command))
 			return 0
 		}
 
 		topic := a.topicByName(arguments[1])
 		if topic != nil {
-			println(topic.Text)
+			a.println(topic.Text)
 			return 0
 		}
 
@@ -151,12 +180,12 @@ func (a Application) Run() int {
 			return subcommand.Run(Context{})
 		}
 
-		printf("%s version %s\n", a.Name, a.Version)
+		a.printf("%s version %s\n", a.Name, a.Version)
 		return 0
 	}
 
 	if subcommand != nil {
-		context, err := parseContext(subcommand.Flags, arguments[1:])
+		context, err := a.parseContext(subcommand.Flags, arguments[1:])
 		if err != nil {
 			yankeeGoHome(err.Error())
 		}
@@ -166,4 +195,9 @@ func (a Application) Run() int {
 
 	yankeeGoHome("unknown subcommand \"" + subcommandName + "\"\n")
 	return 1
+}
+
+// Log prints the message to stderrr (each argument takes a distinct line).
+func (a *Application) Log(lines ...interface{}) {
+	a.printerr(lines...)
 }
